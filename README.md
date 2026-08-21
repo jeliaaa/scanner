@@ -190,6 +190,52 @@ npm run build
 pm2 restart ecosystem.config.js
 ```
 
+## Hosting the backend on IIS
+
+IIS cannot run an ASGI application itself. `server/web.config` uses
+**HttpPlatformHandler**, which starts uvicorn as a child process, assigns it a
+free port, and reverse-proxies to it. IIS owns the process lifecycle, so this
+replaces PM2 for the backend — running both means two copies fighting over the
+same port.
+
+**Prerequisites.** IIS with
+[HttpPlatformHandler 1.2](https://www.iis.net/downloads/microsoft/httpplatformhandler)
+installed, plus `npm run setup` already run so `server/.venv` exists.
+
+**Set it up.**
+
+1. Create a new IIS **site** (or an application under an existing one) with its
+   physical path set to the `server` directory, bound to port 8000. Keeping it
+   on 8000 means the frontend needs no reconfiguration.
+2. Set its application pool to **No Managed Code** — this is not a .NET app.
+3. In the pool's Advanced Settings, set **Start Mode** to `AlwaysRunning` and
+   **Idle Time-out** to `0`. Otherwise IIS kills the Python process after 20
+   idle minutes and the next scan pays a cold OpenCV import.
+4. Grant the pool identity (`IIS AppPool\<pool name>` by default):
+   - **Read & execute** on `server`, including `server\.venv`
+   - **Modify** on `server\.data` and on `logs`
+
+**Check it.**
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+If that fails, `logs\cv-iis.log` has uvicorn's stdout — the usual causes are the
+pool identity lacking execute permission on the virtualenv, or `npm run setup`
+never having been run.
+
+**The frontend still needs a host.** IIS here serves only the API. Either keep
+`scanner-web` under PM2, or put the Next.js app behind IIS as well using ARR and
+URL Rewrite. Whichever you choose, `PY_API_URL` has to match the address IIS
+exposes *at build time* — see the note at the end of the next section.
+
+**Two settings in `web.config` worth knowing about.** `maxAllowedContentLength`
+is raised to 40 MB to match the service's own upload limit; IIS otherwise
+rejects bodies over 30 MB with a 404.13 before the request reaches the app. And
+`SCANNER_DATA_DIR` exists because the pool identity usually cannot write inside
+the site directory — point it at a directory you have granted Modify on.
+
 ## Running the vision service elsewhere
 
 The service is a plain FastAPI app, so it can live on a different machine from

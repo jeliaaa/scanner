@@ -7,13 +7,17 @@ go stale.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import time
 from pathlib import Path
 from typing import Optional
 
-DATA_ROOT = Path(__file__).resolve().parent / ".data" / "sessions"
+# Under IIS the worker runs as the application pool identity, which normally has
+# no write access inside the site directory. SCANNER_DATA_DIR points the scratch
+# store somewhere that has been granted it.
+DATA_ROOT = Path(os.environ.get("SCANNER_DATA_DIR") or Path(__file__).resolve().parent / ".data") / "sessions"
 SESSION_TTL_SECONDS = 24 * 60 * 60
 
 # Session and page ids come from the browser, so they are treated as hostile

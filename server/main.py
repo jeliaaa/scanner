@@ -9,10 +9,12 @@ the code that will crop it.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.parse
 import uuid
-from typing import Literal, Optional
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Literal, Optional
 
 import cv2
 import numpy as np
@@ -25,7 +27,21 @@ import cv_utils
 import pdf_utils
 import store
 
-app = FastAPI(title="Scanner CV service", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    store.sweep_stale()
+    yield
+
+
+app = FastAPI(
+    title="Scanner CV service",
+    version="1.0.0",
+    lifespan=lifespan,
+    # Set when the service is mounted under a sub-path rather than at the root
+    # of its own site, e.g. ROOT_PATH=/api for an IIS virtual directory. Without
+    # it the generated URLs and docs links drop the prefix.
+    root_path=os.environ.get("ROOT_PATH", ""),
+)
 
 # The browser normally reaches this through the Next.js rewrite, so it is
 # same-origin.  CORS is here so the service also works when called directly,
@@ -103,11 +119,6 @@ class ExportRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # lifecycle
 # --------------------------------------------------------------------------- #
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    store.sweep_stale()
 
 
 @app.get("/health")
