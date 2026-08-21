@@ -47,3 +47,5 @@ server/.selftest/
 server/__pycache__/
 .env.local
 .devlog.txt
+logs/*
+!logs/.gitkeep

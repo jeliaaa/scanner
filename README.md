@@ -142,6 +142,54 @@ Scanned pages live in `server/.data/sessions/<id>/` and are swept after 24
 hours. The browser keeps the page list in `localStorage`, so a refresh does not
 lose your scan; pages whose files have already been swept are dropped on load.
 
+## Running it as a service (PM2)
+
+`ecosystem.config.js` defines both processes. From a fresh clone:
+
+```bash
+npm install
+```
+```bash
+npm run setup
+```
+```bash
+npm run build
+```
+```bash
+pm2 start ecosystem.config.js
+```
+```bash
+pm2 save
+```
+
+`npm run build` has to come first: the `/api/py/*` rewrite is baked into the
+build, not read at start-up.
+
+Four things that will bite you otherwise:
+
+- **No `--reload` on the uvicorn args.** It forks a reloader parent plus a
+  server child and PM2 only tracks the parent, so a restart leaves the child
+  holding port 8000 and silently serving stale code. PM2 is the restarter now.
+- **Not `next dev`.** The build above plus `next start` is the production path;
+  `next dev` also spawns children PM2 will not clean up.
+- **Keep `instances: 1` and fork mode.** Cluster mode would fork the Python app,
+  which cannot share its port that way, and scanned pages live on that
+  machine's disk under `server/.data/`.
+- **Boot persistence on Windows needs help.** `pm2 startup` does not support
+  Windows; [pm2-installer](https://github.com/jessety/pm2-installer) registers
+  PM2 as a proper service. A Task Scheduler entry running `pm2 resurrect` works
+  as a fallback, but only once a user logs in.
+
+After pulling changes, rebuild before restarting or you will re-serve the old
+bundle:
+
+```bash
+npm run build
+```
+```bash
+pm2 restart ecosystem.config.js
+```
+
 ## Running the vision service elsewhere
 
 The service is a plain FastAPI app, so it can live on a different machine from
