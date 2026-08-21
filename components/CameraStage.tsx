@@ -315,7 +315,8 @@ export function CameraStage({ onCapture, onImport, busy }: Props) {
         />
 
         <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={busy}>
-          <IconUpload /> Import
+          <IconUpload />
+          <span className="hidden sm:inline">Import</span>
         </Button>
 
         {live && devices.length > 1 && (
@@ -325,8 +326,8 @@ export function CameraStage({ onCapture, onImport, busy }: Props) {
               setDeviceId(event.target.value);
               restart(event.target.value);
             }}
-            className="max-w-40 truncate rounded-lg border border-ink-600 bg-ink-850 px-2 py-2 text-xs
-              text-mute focus:border-scan-600 focus:outline-none"
+            className="w-24 truncate rounded-lg border border-ink-600 bg-ink-850 px-2 py-2 text-xs text-mute
+              focus:border-scan-600 focus:outline-none sm:w-auto sm:max-w-40"
           >
             {devices.map((device, i) => (
               <option key={device.deviceId} value={device.deviceId}>

@@ -5,7 +5,7 @@ import { CameraStage } from "@/components/CameraStage";
 import { ExportPanel } from "@/components/ExportPanel";
 import { PageEditor } from "@/components/PageEditor";
 import { PageStrip } from "@/components/PageStrip";
-import { Button, IconAlert, IconCamera, IconPlus, IconX } from "@/components/ui";
+import { Button, IconAlert, IconCamera, IconDownload, IconPlus, IconX } from "@/components/ui";
 import { checkHealth, deletePage as deletePageOnServer, thumbUrl, uploadPage } from "@/lib/api";
 import { useScanner } from "@/lib/store";
 
@@ -34,6 +34,8 @@ export default function ScannerPage() {
   const [progress, setProgress] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [backendUp, setBackendUp] = React.useState<boolean | null>(null);
+  // Phone only: the desktop rail is always visible instead.
+  const [panelOpen, setPanelOpen] = React.useState(false);
 
   // Belt and braces: if persist has nothing stored, its rehydrate callback may
   // not fire, and the app must not sit on a blank screen waiting for it.
@@ -127,9 +129,55 @@ export default function ScannerPage() {
     );
   }
 
+  // Rendered into the desktop rail and the phone sheet alike, so the two
+  // layouts can never drift apart.
+  const pageStrip = (
+    <PageStrip
+      pages={pages}
+      sessionId={sessionId}
+      selectedId={selectedId}
+      onSelect={(id) => {
+        select(id);
+        setView("edit");
+        setPanelOpen(false);
+      }}
+      onDelete={handleDelete}
+      onMove={movePage}
+    />
+  );
+
+  const sidebar = (
+    <>
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-mute">Pages</h2>
+          <div className="flex-1" />
+          {view === "edit" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setView("camera");
+                setPanelOpen(false);
+              }}
+              className="px-2 py-1 text-xs"
+            >
+              <IconPlus /> Add page
+            </Button>
+          )}
+        </div>
+        {pageStrip}
+      </div>
+
+      <div className="border-t border-ink-800 pt-4">
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-mute">Export</h2>
+        <ExportPanel pages={pages} sessionId={sessionId} settings={settings} onSettings={setSettings} />
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center gap-3 border-b border-ink-800 px-4 py-2.5">
+      <header className="flex shrink-0 items-center gap-2 border-b border-ink-800 px-3 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
         <div className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-md bg-scan-500 text-ink-950">
             <IconCamera className="text-base" />
@@ -173,7 +221,7 @@ export default function ScannerPage() {
         </div>
       )}
 
-      <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
+      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row lg:gap-4 lg:p-4">
         <section className="min-h-0 flex-1">
           {view === "edit" && selected ? (
             <PageEditor
@@ -201,45 +249,54 @@ export default function ScannerPage() {
           )}
         </section>
 
+        {/* Phone: a slim strip of captured pages plus a button that opens the
+            settings sheet. The full rail would eat the viewfinder on a screen
+            this size, and while you are still capturing there is nothing in it
+            worth showing - so it only appears once a page exists. */}
+        {pages.length > 0 && (
+          <div className="flex shrink-0 items-stretch gap-2 lg:hidden">
+            <div className="min-w-0 flex-1">{pageStrip}</div>
+            <Button
+              variant="primary"
+              onClick={() => setPanelOpen(true)}
+              aria-label="Export settings"
+              className="shrink-0 flex-col gap-0.5 px-3 text-[11px]"
+            >
+              <IconDownload className="text-lg" />
+              Export
+            </Button>
+          </div>
+        )}
+
         <aside
-          className="flex w-full shrink-0 flex-col gap-4 overflow-y-auto lg:w-80 lg:pr-1
+          className="hidden shrink-0 flex-col gap-4 overflow-y-auto lg:flex lg:w-80 lg:pr-1
             [scrollbar-color:var(--color-ink-600)_transparent]"
         >
-          <div>
-            <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-mute">Pages</h2>
-              <div className="flex-1" />
-              {view === "edit" && (
-                <Button variant="outline" onClick={() => setView("camera")} className="px-2 py-1 text-xs">
-                  <IconPlus /> Add page
-                </Button>
-              )}
-            </div>
-
-            <PageStrip
-              pages={pages}
-              sessionId={sessionId}
-              selectedId={selectedId}
-              onSelect={(id) => {
-                select(id);
-                setView("edit");
-              }}
-              onDelete={handleDelete}
-              onMove={movePage}
-            />
-          </div>
-
-          <div className="border-t border-ink-800 pt-4">
-            <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-mute">Export</h2>
-            <ExportPanel
-              pages={pages}
-              sessionId={sessionId}
-              settings={settings}
-              onSettings={setSettings}
-            />
-          </div>
+          {sidebar}
         </aside>
       </main>
+
+      {/* Phone: settings as a bottom sheet, within thumb reach. */}
+      {panelOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close settings"
+            onClick={() => setPanelOpen(false)}
+            className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm"
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl border-t
+              border-ink-700 bg-ink-900 px-4 pt-3 shadow-2xl shadow-black/60
+              pb-[max(1rem,env(safe-area-inset-bottom))]"
+          >
+            <div className="sticky top-0 -mx-4 mb-3 bg-ink-900 px-4 pb-2">
+              <div className="mx-auto h-1 w-10 rounded-full bg-ink-600" />
+            </div>
+            {sidebar}
+          </div>
+        </div>
+      )}
 
       {progress && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 flex justify-center">

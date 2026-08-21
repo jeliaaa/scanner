@@ -202,7 +202,7 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
           ))}
         </div>
 
-        <span className="text-xs text-mute">
+        <span className="hidden text-xs text-mute sm:inline">
           Page {index + 1} of {total}
         </span>
 
@@ -220,10 +220,12 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
           <IconRotate />
         </Button>
         <Button variant="outline" onClick={() => void redetect()} disabled={working} title="Detect the edges again">
-          <IconRefresh /> Re-detect
+          <IconRefresh />
+          <span className="hidden sm:inline">Re-detect</span>
         </Button>
         <Button variant="outline" onClick={selectAll} title="Use the whole photo">
-          <IconCrop /> Whole photo
+          <IconCrop />
+          <span className="hidden sm:inline">Whole photo</span>
         </Button>
         <Button variant="danger" onClick={onDelete} title="Discard this page">
           <IconTrash />
@@ -339,14 +341,15 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
       </div>
 
       <div className="flex items-center gap-2">
-        <p className="text-xs text-mute">
+        <p className="hidden text-xs text-mute sm:block">
           {tab === "adjust"
             ? "Drag the corners, or an edge, to match the page."
             : "This is exactly how the page will look in the PDF."}
         </p>
         <div className="flex-1" />
         <Button variant="ghost" onClick={() => setTab(tab === "adjust" ? "result" : "adjust")}>
-          <IconWand /> {tab === "adjust" ? "See result" : "Back to edges"}
+          <IconWand />
+          <span className="hidden sm:inline">{tab === "adjust" ? "See result" : "Back to edges"}</span>
         </Button>
         <Button variant="primary" onClick={onDone}>
           <IconCheck /> Done

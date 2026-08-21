@@ -37,7 +37,7 @@ export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, on
               aria-label={`Open page ${index + 1}`}
               aria-current={active}
               onClick={() => onSelect(page.id)}
-              className={`block w-24 overflow-hidden rounded-lg ring-2 transition-all lg:w-full ${
+              className={`block w-16 overflow-hidden rounded-lg ring-2 transition-all sm:w-20 lg:w-full ${
                 active ? "ring-scan-500" : "ring-ink-700 hover:ring-ink-500"
               }`}
             >
@@ -67,11 +67,14 @@ export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, on
             )}
 
             {/* Reordering and deletion stay hidden until the page is hovered or
-                focused, so the strip reads as thumbnails rather than toolbars. */}
+                focused, so the strip reads as thumbnails rather than toolbars.
+                On touch screens there is no hover, so they are always shown -
+                otherwise they would be unreachable on the device this app is
+                mostly used from. */}
             <div
               className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-gradient-to-t
                 from-ink-950 to-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100
-                group-focus-within:opacity-100"
+                group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
             >
               <IconButton
                 label="Move earlier"
@@ -118,7 +121,7 @@ function IconButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={`grid h-6 w-6 place-items-center rounded text-xs transition-colors disabled:opacity-30
+      className={`grid h-7 w-7 place-items-center rounded text-xs transition-colors disabled:opacity-30 sm:h-6 sm:w-6
         ${danger ? "text-bad-500 hover:bg-bad-500/20" : "text-text hover:bg-ink-600"}`}
     >
       {children}

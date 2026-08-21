@@ -13,6 +13,8 @@ export const viewport: Viewport = {
   // The corner editor uses drag gestures; pinch-zooming the page fights them.
   maximumScale: 1,
   userScalable: false,
+  // Lets the sheet pad itself past the home indicator via env(safe-area-inset-*).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
