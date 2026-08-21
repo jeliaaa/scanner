@@ -3,21 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -n web,api -c cyan,magenta \"next dev\" \"node scripts/api.mjs --reload\"",
+    "web": "next dev",
+    "api": "node scripts/api.mjs --reload",
     "build": "next build",
-    "start": "next start",
+    "start": "concurrently -n web,api -c cyan,magenta \"next start\" \"node scripts/api.mjs\"",
     "lint": "eslint"
   },
   "dependencies": {
     "next": "16.3.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",

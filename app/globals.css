@@ -1,26 +1,86 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-ink-950: #08090c;
+  --color-ink-900: #0b0d11;
+  --color-ink-850: #101319;
+  --color-ink-800: #151920;
+  --color-ink-700: #1d222b;
+  --color-ink-600: #2a313d;
+  --color-ink-500: #3a4453;
+  --color-mute: #8b95a5;
+  --color-text: #e8ecf1;
+
+  --color-scan-400: #4ee7b0;
+  --color-scan-500: #22d39a;
+  --color-scan-600: #12a97a;
+  --color-warn-500: #ffb020;
+  --color-bad-500: #ff5c5c;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ink-950);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
 }
+
+/* Range inputs are the one control Tailwind cannot reach far enough into. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-ink-600);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-scan-500);
+  border: 2px solid var(--color-ink-900);
+  cursor: grab;
+  box-shadow: 0 0 0 1px var(--color-scan-600);
+}
+input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--color-scan-500);
+  border: 2px solid var(--color-ink-900);
+  cursor: grab;
+}
+
+@keyframes shutter-flash {
+  0% { opacity: 0; }
+  8% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+.shutter-flash {
+  animation: shutter-flash 420ms ease-out forwards;
+}
+
+@keyframes sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(400%); }
+}
+.scan-sweep {
+  animation: sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { scrollbar-width: none; }
