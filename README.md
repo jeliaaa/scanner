@@ -144,6 +144,12 @@ lose your scan; pages whose files have already been swept are dropped on load.
 
 ## Running it as a service (PM2)
 
+One of two ways to run this on a persistent machine — the other is
+[IIS](#running-it-on-iis). Pick one: both start the same two processes on the
+same two ports, so running them together just produces a port conflict. PM2 is
+the simpler option; choose IIS if you already terminate TLS there or need the
+site alongside others.
+
 `ecosystem.config.js` defines both processes. From a fresh clone:
 
 ```bash
@@ -190,51 +196,182 @@ npm run build
 pm2 restart ecosystem.config.js
 ```
 
-## Hosting the backend on IIS
+## Running it on IIS
 
-IIS cannot run an ASGI application itself. `server/web.config` uses
-**HttpPlatformHandler**, which starts uvicorn as a child process, assigns it a
-free port, and reverse-proxies to it. IIS owns the process lifecycle, so this
-replaces PM2 for the backend — running both means two copies fighting over the
-same port.
+IIS cannot host Node or ASGI applications itself. Both halves are started by
+**HttpPlatformHandler**, an IIS module that runs your process, assigns it a
+private port, and reverse-proxies to it. Two config files are already in the
+repository:
 
-**Prerequisites.** IIS with
-[HttpPlatformHandler 1.2](https://www.iis.net/downloads/microsoft/httpplatformhandler)
-installed, plus `npm run setup` already run so `server/.venv` exists.
+| File | Site | Runs |
+|---|---|---|
+| `web.config` | frontend, physical path = repository root | `next start` |
+| `server/web.config` | backend, physical path = `server` | `uvicorn main:app` |
 
-**Set it up.**
+This **replaces PM2**. Running both means two copies of each service fighting
+over the same ports.
 
-1. Create a new IIS **site** (or an application under an existing one) with its
-   physical path set to the `server` directory, bound to port 8000. Keeping it
-   on 8000 means the frontend needs no reconfiguration.
-2. Set its application pool to **No Managed Code** — this is not a .NET app.
-3. In the pool's Advanced Settings, set **Start Mode** to `AlwaysRunning` and
-   **Idle Time-out** to `0`. Otherwise IIS kills the Python process after 20
-   idle minutes and the next scan pays a cold OpenCV import.
-4. Grant the pool identity (`IIS AppPool\<pool name>` by default):
-   - **Read & execute** on `server`, including `server\.venv`
-   - **Modify** on `server\.data` and on `logs`
+The example below uses `D:\scanner` as the repository path and `scanner` /
+`scanner-api` as the site names. Substitute your own throughout.
 
-**Check it.**
+### Before you start
 
-```bash
+- IIS, with
+  [HttpPlatformHandler 1.2](https://www.iis.net/downloads/microsoft/httpplatformhandler)
+  installed. Check for it under *IIS Manager to server node to Modules*.
+- Node 20+ and Python 3.10+ on the machine's `PATH`.
+- Confirm where Node lives:
+
+```
+where node
+```
+
+If it is not `C:\Program Files\nodejs\node.exe`, edit `processPath` in the root
+`web.config` to match.
+
+### 1. Build the app
+
+```
+npm install
+```
+```
+npm run setup
+```
+```
+npm run build
+```
+
+`npm run build` is not optional: `next start` refuses to boot without a
+production build, and the `/api/py/*` rewrite is baked in at build time rather
+than read at start-up.
+
+Create the scratch directory the backend writes into:
+
+```
+mkdir D:\scanner\server\.data
+```
+
+### 2. Create the backend site
+
+In IIS Manager, *Sites to Add Website*:
+
+- **Site name:** `scanner-api`
+- **Physical path:** `D:\scanner\server`
+- **Binding:** http, **IP address `127.0.0.1`**, port `8000`
+
+Binding to `127.0.0.1` rather than *All Unassigned* matters. The backend has no
+authentication, and the frontend reaches it over the loopback interface — there
+is no reason for it to be reachable from the network.
+
+### 3. Create the frontend site
+
+*Sites to Add Website* again:
+
+- **Site name:** `scanner`
+- **Physical path:** `D:\scanner`
+- **Binding:** https, port 443 — see step 6 before choosing http
+
+### 4. Configure both application pools
+
+For **each** of the two pools, in *Application Pools to Basic Settings*:
+
+- **.NET CLR version: No Managed Code.** Neither app is .NET.
+
+Then *Advanced Settings*:
+
+- **Start Mode: AlwaysRunning**
+- **Idle Time-out (minutes): 0**
+
+Without those last two, IIS shuts the worker down after 20 idle minutes and the
+next scan pays a cold start — several seconds while OpenCV and numpy import.
+
+### 5. Grant permissions
+
+Application pools run as `IIS AppPool\<pool name>`, which by default cannot read
+your repository or write anywhere in it. From an elevated prompt:
+
+```
+icacls "D:\scanner" /grant "IIS AppPool\scanner":(OI)(CI)RX /T
+```
+```
+icacls "D:\scanner\server" /grant "IIS AppPool\scanner-api":(OI)(CI)RX /T
+```
+```
+icacls "D:\scanner\server\.data" /grant "IIS AppPool\scanner-api":(OI)(CI)M /T
+```
+```
+icacls "D:\scanner\logs" /grant "IIS AppPool\scanner":(OI)(CI)M /T
+```
+```
+icacls "D:\scanner\logs" /grant "IIS AppPool\scanner-api":(OI)(CI)M /T
+```
+
+`RX` is read and execute — the backend pool needs it on `server\.venv` to run
+the interpreter at all. `M` is modify, needed for the scratch store and the
+stdout logs.
+
+### 6. HTTPS, or the camera will not work
+
+Browsers only expose `getUserMedia` in a **secure context**. `localhost` is
+exempt, so browsing to `http://localhost` on the server itself is fine. From any
+other machine over plain http the camera silently never appears and only the
+**Import** button works — the app will look broken rather than report an error.
+
+So if anyone will use this from another device, give the frontend site an https
+binding. A self-signed certificate is enough for a LAN, though each client will
+have to accept the warning once:
+
+```
+New-SelfSignedCertificate -DnsName "scanner.local" -CertStoreLocation "cert:\LocalMachine\My"
+```
+
+Then bind it under *Site to Bindings to Add to https*, and install the
+certificate into *Trusted Root Certification Authorities* on the client
+machines.
+
+### 7. Check it
+
+Backend, from the server itself:
+
+```
 curl http://127.0.0.1:8000/health
 ```
 
-If that fails, `logs\cv-iis.log` has uvicorn's stdout — the usual causes are the
-pool identity lacking execute permission on the virtualenv, or `npm run setup`
-never having been run.
+Expected: `{"ok":true,"opencv":"5.0.0","service":"scanner-cv"}`
 
-**The frontend still needs a host.** IIS here serves only the API. Either keep
-`scanner-web` under PM2, or put the Next.js app behind IIS as well using ARR and
-URL Rewrite. Whichever you choose, `PY_API_URL` has to match the address IIS
-exposes *at build time* — see the note at the end of the next section.
+Frontend, end to end — this goes through IIS, Next.js and its rewrite into the
+backend, so a healthy answer means the whole chain is wired up:
 
-**Two settings in `web.config` worth knowing about.** `maxAllowedContentLength`
-is raised to 40 MB to match the service's own upload limit; IIS otherwise
-rejects bodies over 30 MB with a 404.13 before the request reaches the app. And
-`SCANNER_DATA_DIR` exists because the pool identity usually cannot write inside
-the site directory — point it at a directory you have granted Modify on.
+```
+curl https://localhost/api/py/health
+```
+
+Then open the site in a browser. The header shows a red *Vision service offline*
+banner if the frontend cannot reach the backend.
+
+### When something does not work
+
+The first request after a restart is slow — HttpPlatformHandler is booting the
+child process. After that:
+
+| Symptom | Where to look |
+|---|---|
+| **502.5** on first request | The child process failed to start. `logs\web-iis.log` or `logs\cv-iis.log` has its stdout. |
+| Backend 502, empty log | Pool identity cannot execute `server\.venv\Scripts\python.exe`. Re-check step 5. |
+| Frontend 502, log says no production build | `npm run build` was not run, or was run as a different user and the output is unreadable. |
+| **404.13** when adding a page | A photo exceeded the request limit. Both configs set 40 MB; check neither was reverted. |
+| *Vision service offline* banner | The backend site is stopped, or not bound to `127.0.0.1:8000`. |
+| Camera never appears | Not a secure context. See step 6. |
+| Everything 503 | The application pool stopped, usually after repeated start failures. Start it again once the underlying error is fixed. |
+
+### After pulling changes
+
+```
+npm run build
+```
+
+Then *Restart* both sites in IIS Manager. Restarting without rebuilding
+re-serves the old bundle.
 
 ## Running the vision service elsewhere
 
