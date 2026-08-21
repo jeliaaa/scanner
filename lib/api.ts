@@ -1,7 +1,19 @@
 import type { ExportReport, Mode, Page, PageSize, Quad, Settings } from "./types";
 
-/** Same-origin thanks to the rewrite in next.config.ts. */
-const BASE = "/api/py";
+/**
+ * Where the vision service lives.
+ *
+ * Defaults to the same-origin rewrite in next.config.ts, which is right when
+ * both halves run on one machine.
+ *
+ * Set NEXT_PUBLIC_API_BASE to an absolute https URL when the frontend is hosted
+ * somewhere else, such as Vercel, so the browser calls the backend directly.
+ * The detection loop fires roughly eight times a second, and relaying each
+ * frame through the frontend host doubles the round trip for every one of them.
+ * Going direct means CORS applies, so the backend's ALLOWED_ORIGINS has to name
+ * the frontend's origin.
+ */
+const BASE = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") || "/api/py";
 
 async function ensureOk(res: Response): Promise<Response> {
   if (res.ok) return res;

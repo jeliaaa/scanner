@@ -373,18 +373,88 @@ npm run build
 Then *Restart* both sites in IIS Manager. Restarting without rebuilding
 re-serves the old bundle.
 
-## Running the vision service elsewhere
+## Split hosting: frontend on Vercel, backend on IIS
 
-The service is a plain FastAPI app, so it can live on a different machine from
-the UI:
+Vercel cannot host the vision service — OpenCV plus numpy is a ~165 MB
+dependency tree, the session store needs a filesystem that survives between
+requests, and the detection loop would be several serverless invocations per
+second per user. So the Next.js app goes to Vercel and the FastAPI service stays
+on IIS.
 
-```bash
-PY_API_URL=http://192.168.0.50:8000 npm run web
+Two settings connect them.
+
+**On Vercel**, set an environment variable and then deploy:
+
+```
+NEXT_PUBLIC_API_BASE = https://scan-api.example.com
 ```
 
-On that machine, bind it publicly with `API_HOST=0.0.0.0 npm run api`. CORS is
-already open, so a phone on the same network can also point straight at port
-8000. There is no authentication — keep it on a trusted network.
+This has to be present **before the build**, because `NEXT_PUBLIC_*` values are
+inlined into the client bundle. Changing it later needs a redeploy, not just a
+restart.
+
+It also makes the browser call the backend directly rather than going through
+the rewrite in `next.config.ts`. That matters here: the detection loop fires
+about eight times a second, and relaying every frame through Vercel to reach
+your machine doubles the round trip for all of them. Going direct removes that
+hop. (`PY_API_URL` and the rewrite are still there, and still the right choice
+when both halves share a machine.)
+
+**On the IIS backend**, name the frontend's origin so the browser is allowed to
+call it:
+
+```
+ALLOWED_ORIGINS = https://your-project.vercel.app
+```
+
+Set it as an `environmentVariable` in `server/web.config`. Without it the
+service keeps its permissive local-development default of `*`, which lets any
+website drive it from a visitor's browser.
+
+You also need to revisit two things from the IIS walkthrough above, both of
+which assumed the frontend was on the same machine:
+
+- **The binding.** Step 2 binds the backend to `127.0.0.1`. Vercel and the
+  browser now have to reach it, so it needs a public binding, a firewall rule
+  and a DNS name.
+- **TLS.** The Vercel page is https, so a browser will refuse to call an http
+  backend as mixed content. The backend needs a real certificate — a self-signed
+  one will not do here, because clients cannot be asked to trust it.
+
+### Read this before you expose it
+
+Making the backend publicly reachable is a genuine change in exposure, not a
+formality. As written the service has **no authentication**, so anyone who finds
+the hostname can spend your CPU on it, and anyone who learns a session id can
+read the scanned pages behind it. Session ids are 128-bit random hex and are not
+enumerable, but they do travel in URLs.
+
+Options, roughly in order of effort:
+
+1. **Cloudflare Tunnel** in front of it. Gives you TLS and a hostname with no
+   inbound port open, and Cloudflare Access can require a login before any
+   request reaches IIS. Best effort-to-safety ratio.
+2. **A shared secret** the frontend sends. Note it would be visible in the
+   browser bundle, so it stops bots and drive-by traffic rather than a
+   determined person. The thumbnail and original-image endpoints are loaded as
+   `<img src>` and cannot carry a header, so the secret would have to be a query
+   parameter or a cookie.
+3. **Leave it open** — only reasonable if the documents genuinely do not matter.
+
+Ask before picking option 3 for anything you would not post publicly.
+
+### Expect the overlay to be slower
+
+On one machine the live detection round trip is about 15 ms, comfortably inside
+a frame. Across the internet it becomes whatever your latency to the server is,
+typically 60-200 ms, so the outline visibly trails the paper. It still works;
+it just feels less attached.
+
+If that bothers you, the fixes in increasing order of effort are: raise
+`DETECT_INTERVAL_MS` in `components/CameraStage.tsx` so it sends fewer, less
+stale frames; host the frontend near the backend instead of on Vercel; or move
+detection into the browser with a WASM build of OpenCV, which is the only option
+that removes the network from the loop entirely.
 
 ## Things worth knowing if you extend it
 

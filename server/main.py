@@ -43,12 +43,23 @@ app = FastAPI(
     root_path=os.environ.get("ROOT_PATH", ""),
 )
 
-# The browser normally reaches this through the Next.js rewrite, so it is
-# same-origin.  CORS is here so the service also works when called directly,
-# e.g. from a phone on the LAN pointed at the machine running it.
+# When the browser reaches this through the Next.js rewrite it is same-origin
+# and CORS never applies.  It does apply when the frontend is hosted elsewhere
+# and calls the service directly.
+#
+# "*" is the local-development default.  Once this service is reachable beyond
+# localhost, set ALLOWED_ORIGINS to a comma-separated list of the origins that
+# should be able to drive it, so an arbitrary website cannot use a visitor's
+# browser to read scans out of it.
+_allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Scan-Report", "Content-Disposition"],

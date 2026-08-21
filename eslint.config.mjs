@@ -13,6 +13,12 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    // PM2 reads its ecosystem file through Node's CommonJS loader, so require()
+    // and module.exports are the only forms that work there.
+    files: ["ecosystem.config.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;
