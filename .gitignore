@@ -49,3 +49,5 @@ server/__pycache__/
 .devlog.txt
 logs/*
 !logs/.gitkeep
+server/logs/*
+!server/logs/.gitkeep
