@@ -456,6 +456,32 @@ stale frames; host the frontend near the backend instead of on Vercel; or move
 detection into the browser with a WASM build of OpenCV, which is the only option
 that removes the network from the loop entirely.
 
+## Scanning straight into another system
+
+The scanner can hand its PDF back to whatever opened it, instead of downloading
+a file the user then re-uploads. Open it with an upload target in the query
+string:
+
+```
+https://scan.th.com.ge/?upload_to=https://app.example.com/ajax/scan_upload.php
+  &token=<one-time>&translation_id=456&label=Order%20A-1234
+```
+
+The export button becomes **Send to portal**, and the finished PDF is POSTed to
+that endpoint with the token. `docs/portal/` has the full contract plus working
+PHP references for the receiving endpoint and the token minting.
+
+`upload_to` is attacker-controllable, so it is checked against an allowlist
+before anything is sent:
+
+```
+NEXT_PUBLIC_UPLOAD_ORIGINS=https://app.example.com
+```
+
+Read at build time. With none configured, hand-off links are refused rather than
+trusted — otherwise a link mailed to a user would turn this into a document
+exfiltration tool pointed at them.
+
 ## Things worth knowing if you extend it
 
 - **Quads are normalised.** Every quad crossing the API is in 0..1 of the image,

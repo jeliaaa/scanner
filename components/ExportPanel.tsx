@@ -2,20 +2,24 @@
 
 import * as React from "react";
 import { exportPdf } from "@/lib/api";
+import { type Handoff, uploadToPortal } from "@/lib/handoff";
 import { DPI_PRESETS, MODE_LABELS, type ExportReport, type Mode, type Page, type PageSize, type Settings } from "@/lib/types";
-import { Button, Field, IconAlert, IconDownload, Segmented, formatBytes } from "./ui";
+import { Button, Field, IconAlert, IconCheck, IconDownload, IconUpload, Segmented, formatBytes } from "./ui";
 
 interface Props {
   pages: Page[];
   sessionId: string;
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  /** Set when the portal launched this scan and wants the PDF back. */
+  handoff?: Handoff | null;
 }
 
-export function ExportPanel({ pages, sessionId, settings, onSettings }: Props) {
+export function ExportPanel({ pages, sessionId, settings, onSettings, handoff }: Props) {
   const [busy, setBusy] = React.useState(false);
   const [report, setReport] = React.useState<ExportReport | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [sent, setSent] = React.useState(false);
 
   // Group 4 is lossless, so a JPEG quality control would do nothing in bw mode.
   const lossless = settings.mode === "bw";
@@ -42,6 +46,51 @@ export function ExportPanel({ pages, sessionId, settings, onSettings }: Props) {
       setBusy(false);
     }
   };
+
+  const sendToPortal = async () => {
+    if (!handoff) return;
+    setBusy(true);
+    setError(null);
+    setReport(null);
+    try {
+      const { blob, report: result, filename } = await exportPdf(sessionId, pages, settings);
+      setReport(result);
+      const outcome = await uploadToPortal(handoff, blob, filename);
+      if (outcome.ok) setSent(true);
+      else setError(outcome.message);
+    } catch (err) {
+      setError((err as Error).message || "The export failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-scan-600/40 bg-scan-500/5 px-4 py-8 text-center">
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-scan-500 text-xl text-ink-950">
+          <IconCheck />
+        </span>
+        <div>
+          <p className="text-sm font-medium text-text">Sent to the portal</p>
+          <p className="mt-1 text-xs text-mute">
+            {report ? `${report.pages} page${report.pages > 1 ? "s" : ""}, ${formatBytes(report.bytes)}` : null}
+            {handoff?.label ? ` attached to ${handoff.label}` : null}
+          </p>
+        </div>
+        {handoff?.returnTo ? (
+          <a
+            href={handoff.returnTo}
+            className="rounded-lg bg-scan-500 px-3 py-2 text-sm font-medium text-ink-950 hover:bg-scan-400"
+          >
+            Return to your order
+          </a>
+        ) : (
+          <p className="text-xs text-mute">You can close this tab and return to your order.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -169,15 +218,45 @@ export function ExportPanel({ pages, sessionId, settings, onSettings }: Props) {
         )}
       </div>
 
-      <Button
-        variant="primary"
-        onClick={() => void download()}
-        disabled={!pages.length || busy}
-        className="w-full py-2.5 text-sm"
-      >
-        <IconDownload />
-        {busy ? "Building the PDF…" : `Download PDF${pages.length ? ` · ${pages.length} page${pages.length > 1 ? "s" : ""}` : ""}`}
-      </Button>
+      {handoff ? (
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="primary"
+            onClick={() => void sendToPortal()}
+            disabled={!pages.length || busy}
+            className="w-full py-2.5 text-sm"
+          >
+            <IconUpload />
+            {busy
+              ? "Sending…"
+              : `Send to portal${pages.length ? ` · ${pages.length} page${pages.length > 1 ? "s" : ""}` : ""}`}
+          </Button>
+
+          {/* An escape hatch: if the portal is unreachable the scan is still
+              worth something as a file, rather than being lost with the tab. */}
+          <button
+            type="button"
+            onClick={() => void download()}
+            disabled={!pages.length || busy}
+            className="text-center text-[11px] text-mute underline underline-offset-2
+              hover:text-text disabled:opacity-50"
+          >
+            Download the PDF instead
+          </button>
+        </div>
+      ) : (
+        <Button
+          variant="primary"
+          onClick={() => void download()}
+          disabled={!pages.length || busy}
+          className="w-full py-2.5 text-sm"
+        >
+          <IconDownload />
+          {busy
+            ? "Building the PDF…"
+            : `Download PDF${pages.length ? ` · ${pages.length} page${pages.length > 1 ? "s" : ""}` : ""}`}
+        </Button>
+      )}
 
       {report && (
         <div className="rounded-lg border border-scan-600/40 bg-scan-500/5 px-3 py-2.5 text-[11px] leading-relaxed">

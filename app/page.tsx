@@ -5,8 +5,9 @@ import { CameraStage } from "@/components/CameraStage";
 import { ExportPanel } from "@/components/ExportPanel";
 import { PageEditor } from "@/components/PageEditor";
 import { PageStrip } from "@/components/PageStrip";
-import { Button, IconAlert, IconCamera, IconDownload, IconPlus, IconX } from "@/components/ui";
+import { Button, IconAlert, IconCamera, IconDownload, IconPlus, IconUpload, IconX } from "@/components/ui";
 import { checkHealth, deletePage as deletePageOnServer, thumbUrl, uploadPage } from "@/lib/api";
+import { type HandoffResult, readHandoff } from "@/lib/handoff";
 import { useScanner } from "@/lib/store";
 
 type View = "camera" | "edit";
@@ -36,6 +37,14 @@ export default function ScannerPage() {
   const [backendUp, setBackendUp] = React.useState<boolean | null>(null);
   // Phone only: the desktop rail is always visible instead.
   const [panelOpen, setPanelOpen] = React.useState(false);
+
+  // Read once from the launch URL. A lazy initialiser rather than an effect,
+  // so it never causes a second render, and the query string cannot change
+  // underneath us without a reload anyway.
+  const [handoffResult] = React.useState<HandoffResult>(() =>
+    typeof window === "undefined" ? { status: "none" } : readHandoff(window.location.search)
+  );
+  const handoff = handoffResult.status === "ready" ? handoffResult.handoff : null;
 
   // Belt and braces: if persist has nothing stored, its rehydrate callback may
   // not fire, and the app must not sit on a blank screen waiting for it.
@@ -170,7 +179,13 @@ export default function ScannerPage() {
 
       <div className="border-t border-ink-800 pt-4">
         <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-mute">Export</h2>
-        <ExportPanel pages={pages} sessionId={sessionId} settings={settings} onSettings={setSettings} />
+        <ExportPanel
+          pages={pages}
+          sessionId={sessionId}
+          settings={settings}
+          onSettings={setSettings}
+          handoff={handoff}
+        />
       </div>
     </>
   );
@@ -208,6 +223,26 @@ export default function ScannerPage() {
         <div className="shrink-0 border-b border-bad-500/25 bg-bad-500/10 px-4 py-2 text-xs text-bad-500">
           The Python vision service is not answering on <code>/api/py/health</code>. Start it with{" "}
           <code className="rounded bg-ink-950/50 px-1 py-0.5">npm run api</code>, then this banner will clear itself.
+        </div>
+      )}
+
+      {handoff && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-scan-600/30 bg-scan-500/10 px-4 py-2 text-xs text-scan-400">
+          <IconUpload className="shrink-0" />
+          <span>
+            Scanning for {handoff.label ?? (handoff.translationId ? `order ${handoff.translationId}` : "your order")}
+            {" — "}the finished PDF goes straight back to the portal.
+          </span>
+        </div>
+      )}
+
+      {handoffResult.status === "rejected" && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-bad-500/25 bg-bad-500/10 px-4 py-2 text-xs text-bad-500">
+          <IconAlert className="mt-0.5 shrink-0" />
+          <span>
+            This link asked for the scan to be sent somewhere that is not approved, so it has been
+            ignored. {handoffResult.reason} You can still scan and download normally.
+          </span>
         </div>
       )}
 
