@@ -21,7 +21,7 @@ POST multipart to the portal's ajax/scan_upload.php
 
 ```
 https://scan.th.com.ge/
-  ?upload_to=https://app.tarjimnebi.ge/ajax/scan_upload.php
+  ?upload_to=https://my.tarjimnebi.ge/ajax/scan_upload.php
   &token=<64 hex chars>
   &translation_id=456
   &label=Order%20A-1234        (optional, shown to the translator)
@@ -53,7 +53,7 @@ order") rather than for a log.
 **1. Scanner side** — set the allowlist and rebuild:
 
 ```
-NEXT_PUBLIC_UPLOAD_ORIGINS=https://app.tarjimnebi.ge
+NEXT_PUBLIC_UPLOAD_ORIGINS=https://my.tarjimnebi.ge
 ```
 
 Put it in `.env.local` on the server (or a machine-level environment variable),
@@ -91,7 +91,7 @@ validation as they are.
 ## Trying it without the portal
 
 The scanner's behaviour can be exercised on its own. With
-`NEXT_PUBLIC_UPLOAD_ORIGINS=https://app.tarjimnebi.ge` set, open a link with
+`NEXT_PUBLIC_UPLOAD_ORIGINS=https://my.tarjimnebi.ge` set, open a link with
 those parameters and the header shows which order the scan is bound for, the
 export button becomes **Send to portal**, and a **Download the PDF instead**
 fallback appears underneath for when the portal is unreachable.

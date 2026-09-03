@@ -23,7 +23,7 @@
 declare(strict_types=1);
 
 const SCANNER_URL   = 'https://scan.th.com.ge/';
-const UPLOAD_URL    = 'https://app.tarjimnebi.ge/ajax/scan_upload.php';
+const UPLOAD_URL    = 'https://my.tarjimnebi.ge/ajax/scan_upload.php';
 const TOKEN_MINUTES = 30;
 
 /**
@@ -51,7 +51,7 @@ function scan_link(PDO $pdo, int $translationId, int $userId, string $orderLabel
         'token'          => $token,
         'translation_id' => $translationId,
         'label'          => $orderLabel,
-        'return_to'      => sprintf('https://app.tarjimnebi.ge/orders/%d', $translationId),
+        'return_to'      => sprintf('https://my.tarjimnebi.ge/orders/%d', $translationId),
     ]);
 }
 
