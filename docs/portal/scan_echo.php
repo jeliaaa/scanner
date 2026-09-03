@@ -20,13 +20,12 @@ if (in_array($origin, ALLOWED_ORIGINS, true)) {
     header('Access-Control-Allow-Origin: ' . $origin);
     header('Vary: Origin');
     header('Access-Control-Allow-Methods: POST, OPTIONS');
-    header('Access-Control-Allow-Headers: X-Scan-Token, Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type');
     header('Access-Control-Max-Age: 86400');
 }
 
-// The scanner sends X-Scan-Token, which makes the POST non-simple, so the
-// browser asks permission first. If this block is missing, the upload fails
-// with a CORS error and the request below never runs.
+// Not expected: the scanner sends no custom headers, so its POST is a CORS
+// simple request. Answered anyway, in case a header is added later.
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
@@ -51,8 +50,7 @@ echo json_encode([
     'ok'             => $saved !== null,
     'origin'         => $origin,
     'method'         => $_SERVER['REQUEST_METHOD'] ?? null,
-    'header_token'   => $_SERVER['HTTP_X_SCAN_TOKEN'] ?? null,
-    'body_token'     => $_POST['token'] ?? null,
+    'token'          => $_POST['token'] ?? null,
     'translation_id' => $_POST['translation_id'] ?? null,
     'saved_to'       => $saved,
     'bytes'          => $bytes,

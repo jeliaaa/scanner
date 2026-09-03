@@ -101,9 +101,15 @@ export interface UploadOutcome {
 /**
  * POST the finished PDF to the portal.
  *
- * Sent as multipart so the endpoint can treat it like any other file upload.
- * The token travels in a header as well as the body: header for endpoints that
- * check credentials before parsing, body for ones built around $_POST.
+ * Deliberately sent with no custom headers. A multipart POST carrying only
+ * form fields is a CORS "simple request", so the browser sends it straight
+ * out. Adding something like an X-Scan-Token header would instead provoke an
+ * OPTIONS preflight, and any endpoint that does not answer that fails with an
+ * opaque network error before the upload is even attempted. The token rides in
+ * the body, which every server-side framework can read without extra work.
+ *
+ * The receiving endpoint still has to return Access-Control-Allow-Origin, or
+ * the browser will not let us read the reply.
  */
 export async function uploadToPortal(
   handoff: Handoff,
@@ -120,7 +126,6 @@ export async function uploadToPortal(
     response = await fetch(handoff.uploadTo, {
       method: "POST",
       body: form,
-      headers: { "X-Scan-Token": handoff.token },
       // Keeps the token out of the Referer header on the portal's side.
       referrerPolicy: "no-referrer",
       // No cookies: the token is the only credential, and sending ambient
@@ -132,11 +137,28 @@ export async function uploadToPortal(
       ok: false,
       status: 0,
       message:
-        "Could not reach the portal. It may be offline, or it may not allow uploads from this site.",
+        "Could not reach the portal. It is offline, the address is wrong, or it did not send " +
+        "the CORS header that lets this site talk to it.",
     };
   }
 
   if (response.ok) {
+    // A 200 is not proof of success: endpoints commonly report a rejected
+    // upload as {"success":false,"error":"..."} with an OK status. Treating
+    // the status alone as the answer would tell the user their scan was filed
+    // when it was thrown away.
+    try {
+      const body = await response.clone().json();
+      if (body && (body.success === false || body.ok === false)) {
+        return {
+          ok: false,
+          status: response.status,
+          message: body.error || body.message || "The portal rejected the scan.",
+        };
+      }
+    } catch {
+      /* not JSON, or empty: a 2xx with no complaint counts as success */
+    }
     return { ok: true, status: response.status, message: "Delivered to the portal." };
   }
 

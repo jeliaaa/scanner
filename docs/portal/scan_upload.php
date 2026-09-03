@@ -7,13 +7,15 @@
  * CORS allowlist, the single-use token check, and the file validation.
  *
  * Contract with the scanner:
- *   POST multipart/form-data
+ *   POST multipart/form-data, no custom headers (so no CORS preflight)
  *     file            the PDF
- *     token           the one-time token, also sent as the X-Scan-Token header
+ *     token           the one-time token
  *     translation_id  the order it belongs to
- *   Responds 200 {"ok":true} on success, or 4xx {"error":"..."}.
- *   The scanner shows the "error" string to the translator, so write it for
- *   them, not for a log file.
+ *   Responds 200 {"ok":true} on success. On failure, either a 4xx with
+ *   {"error":"..."} or a 200 with {"success":false,"error":"..."} - the scanner
+ *   understands both, and will not report a success:false body as delivered.
+ *   The "error" string is shown to the translator, so write it for them, not
+ *   for a log file.
  */
 
 declare(strict_types=1);
@@ -31,12 +33,12 @@ if (in_array($origin, ALLOWED_ORIGINS, true)) {
     header('Access-Control-Allow-Origin: ' . $origin);
     header('Vary: Origin');
     header('Access-Control-Allow-Methods: POST, OPTIONS');
-    header('Access-Control-Allow-Headers: X-Scan-Token, Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type');
     header('Access-Control-Max-Age: 86400');
 }
 
-// The X-Scan-Token header makes this a non-simple request, so the browser
-// sends a preflight first. Answer it and stop.
+// The scanner sends no custom headers, so a preflight is not expected.
+// Answered anyway, so adding one later does not silently break uploads.
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
@@ -61,7 +63,7 @@ if (!in_array($origin, ALLOWED_ORIGINS, true)) {
 // ---------------------------------------------------------------------------
 // Token
 // ---------------------------------------------------------------------------
-$token = $_SERVER['HTTP_X_SCAN_TOKEN'] ?? ($_POST['token'] ?? '');
+$token = $_POST['token'] ?? '';
 if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
     fail(400, 'The scan link is malformed. Start the scan again from your order.');
 }
