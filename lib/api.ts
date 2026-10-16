@@ -55,7 +55,10 @@ export async function detectFrame(blob: Blob, signal?: AbortSignal): Promise<Det
   return (await ensureOk(res)).json();
 }
 
-export async function uploadPage(sessionId: string, blob: Blob): Promise<Omit<Page, "rotate" | "mode">> {
+export async function uploadPage(
+  sessionId: string,
+  blob: Blob
+): Promise<Omit<Page, "rotate" | "mode" | "documentId">> {
   const form = new FormData();
   form.append("file", blob, "page.jpg");
   const res = await fetch(`${BASE}/sessions/${sessionId}/pages`, { method: "POST", body: form });

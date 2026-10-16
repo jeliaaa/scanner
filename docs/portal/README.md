@@ -26,7 +26,14 @@ https://scan.th.com.ge/
   &translation_id=456
   &label=Order%20A-1234        (optional, shown to the translator)
   &return_to=https://…/orders/456   (optional, button after success)
+  &documents=[{"id":101,"label":"Passport"},…]   (optional, URL-encoded JSON)
 ```
+
+`documents` is for orders with several documents: the scanner then produces one
+PDF per document and uploads each with a `document_id` field. It is used only
+for names and order; the portal must still decide server-side which documents a
+token may fill. Leave it out and the link behaves exactly as before. See
+[../multi-document-orders.md](../multi-document-orders.md) for the portal changes.
 
 ## The upload
 

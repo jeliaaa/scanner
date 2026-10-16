@@ -2,11 +2,14 @@
 
 import * as React from "react";
 import { CameraStage } from "@/components/CameraStage";
+import { DocumentChip, DocumentList } from "@/components/DocumentList";
 import { ExportPanel } from "@/components/ExportPanel";
 import { PageEditor } from "@/components/PageEditor";
 import { PageStrip } from "@/components/PageStrip";
+import { Sheet } from "@/components/Sheet";
 import { Button, IconAlert, IconCamera, IconChevronRight, IconPlus, IconUpload, IconX } from "@/components/ui";
 import { checkHealth, deletePage as deletePageOnServer, thumbUrl, uploadPage } from "@/lib/api";
+import { pagesOf, plural } from "@/lib/documents";
 import { type HandoffResult, readHandoff } from "@/lib/handoff";
 import { useScanner } from "@/lib/store";
 
@@ -19,6 +22,8 @@ export default function ScannerPage() {
   const {
     sessionId,
     pages,
+    documents,
+    activeDocumentId,
     selectedId,
     settings,
     hydrated,
@@ -28,6 +33,10 @@ export default function ScannerPage() {
     removePage,
     movePage,
     select,
+    addDocument,
+    setActiveDocument,
+    markDocumentSent,
+    syncPortalDocuments,
     setSettings,
     markHydrated,
     reset,
@@ -40,6 +49,7 @@ export default function ScannerPage() {
   const [backendUp, setBackendUp] = React.useState<boolean | null>(null);
   // Phone only: the desktop rail is always visible instead.
   const [panelOpen, setPanelOpen] = React.useState(false);
+  const [docsOpen, setDocsOpen] = React.useState(false);
 
   // Read once from the launch URL. A lazy initialiser rather than an effect,
   // so it never causes a second render, and the query string cannot change
@@ -54,6 +64,18 @@ export default function ScannerPage() {
   React.useEffect(() => {
     if (!hydrated) markHydrated();
   }, [hydrated, markHydrated]);
+
+  // When the portal names the documents to scan, line the session up with them.
+  // Safe to repeat: documents already scanned for the same portal id are kept.
+  React.useEffect(() => {
+    if (!hydrated || !handoff?.documents) return;
+    syncPortalDocuments(handoff.documents.map((doc) => ({ portalId: doc.id, label: doc.label })));
+  }, [hydrated, handoff, syncPortalDocuments]);
+
+  // True once every document the link names exists. Rendering waits for it, so
+  // there is never a frame showing the default document before the real ones.
+  const aligned =
+    !handoff?.documents || handoff.documents.every((doc) => documents.some((d) => d.portalId === doc.id));
 
   React.useEffect(() => {
     let alive = true;
@@ -87,31 +109,38 @@ export default function ScannerPage() {
     })();
   }, [hydrated, sessionId, pages, removePage]);
 
-  // Escape closes the phone sheet, as it does any other dialog.
-  React.useEffect(() => {
-    if (!panelOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPanelOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [panelOpen]);
+  const activeIndex = Math.max(
+    0,
+    documents.findIndex((doc) => doc.id === activeDocumentId)
+  );
+  const activeDoc = documents[activeIndex];
+  const docPages = pagesOf(pages, activeDoc.id);
+  const selected = docPages.find((page) => page.id === selectedId) ?? null;
+  const selectedIndex = selected ? docPages.findIndex((page) => page.id === selected.id) : -1;
+  const lastPage = docPages.length ? docPages[docPages.length - 1] : null;
 
-  const selected = pages.find((page) => page.id === selectedId) ?? null;
-  const selectedIndex = selected ? pages.findIndex((page) => page.id === selected.id) : -1;
-  const lastPage = pages.length ? pages[pages.length - 1] : null;
+  const multi = documents.length > 1;
+  // Documents of your own can be added only on a plain scan. A portal link has
+  // fixed documents, and a one-document link's token can be used once, so a
+  // second document there would have nowhere to go.
+  const allowAdd = !handoff;
+  const nextDoc = documents[activeIndex + 1];
+  const docsWithPages = documents.filter((doc) => pagesOf(pages, doc.id).length > 0).length;
 
   const ingest = React.useCallback(
     async (blobs: Blob[], source: "camera" | "import") => {
       setBusy(true);
       setError(null);
+      // Read now, not from the closure: the user may switch document while a
+      // slow upload is in flight, and these pages belong where they started.
+      const target = useScanner.getState().activeDocumentId;
       try {
         const session = ensureSession();
         let weak = false;
         for (let i = 0; i < blobs.length; i++) {
           setProgress(blobs.length > 1 ? `Reading page ${i + 1} of ${blobs.length}…` : "Reading page…");
           const result = await uploadPage(session, blobs[i]);
-          addPage({ ...result, rotate: 0, mode: null });
+          addPage({ ...result, rotate: 0, mode: null }, target);
           if (result.confidence < WEAK_EDGES) weak = true;
         }
         // Scanning several pages is a rhythm: capture, capture, capture. So a
@@ -142,14 +171,19 @@ export default function ScannerPage() {
   );
 
   const startOver = () => {
-    if (pages.length && !confirm(`Discard ${pages.length} scanned page${pages.length > 1 ? "s" : ""}?`)) return;
+    if (pages.length && !confirm(`Discard ${plural(pages.length, "scanned page")}?`)) return;
     pages.forEach((page) => sessionId && void deletePageOnServer(sessionId, page.id).catch(() => undefined));
     reset();
+    // A portal order's documents come back from the link, not from the session.
+    if (handoff?.documents) {
+      syncPortalDocuments(handoff.documents.map((doc) => ({ portalId: doc.id, label: doc.label })));
+    }
     setView("camera");
     setPanelOpen(false);
+    setDocsOpen(false);
   };
 
-  if (!hydrated) {
+  if (!hydrated || !aligned) {
     return (
       <div className="grid h-dvh place-items-center">
         <div className="relative h-12 w-12 overflow-hidden rounded-md ring-1 ring-ink-600">
@@ -164,11 +198,25 @@ export default function ScannerPage() {
     setPanelOpen(false);
   };
 
+  const chooseDocument = (id: string) => {
+    setActiveDocument(id);
+    setView("camera");
+    setDocsOpen(false);
+    setPanelOpen(false);
+  };
+
+  const newDocument = () => {
+    addDocument();
+    setView("camera");
+    setDocsOpen(false);
+    setPanelOpen(false);
+  };
+
   // Rendered into the desktop rail and the phone editor alike, so the two
   // layouts can never drift apart.
   const pageStrip = (phone: boolean) => (
     <PageStrip
-      pages={pages}
+      pages={docPages}
       sessionId={sessionId}
       selectedId={selectedId}
       onSelect={(id) => {
@@ -185,15 +233,18 @@ export default function ScannerPage() {
   const exportPanel = (compact: boolean) => (
     <ExportPanel
       pages={pages}
+      documents={documents}
       sessionId={sessionId}
       settings={settings}
       onSettings={setSettings}
       handoff={handoff}
+      onSent={markDocumentSent}
       compact={compact}
     />
   );
 
-  const pagesLabel = `${pages.length} page${pages.length === 1 ? "" : "s"}`;
+  const pagesLabel = plural(pages.length, "page");
+  const exportLabel = multi ? plural(docsWithPages, "document") : pagesLabel;
   const hasBanner = backendUp === false || Boolean(handoff) || handoffResult.status === "rejected" || Boolean(error);
   const camera = view === "camera" || !selected;
 
@@ -242,7 +293,8 @@ export default function ScannerPage() {
               <IconUpload className="shrink-0" />
               <span>
                 Scanning for {handoff.label ?? (handoff.translationId ? `order ${handoff.translationId}` : "your order")}
-                {" — "}the finished PDF goes straight back to the portal.
+                {" — "}
+                {multi ? "each finished PDF goes" : "the finished PDF goes"} straight back to the portal.
               </span>
             </div>
           )}
@@ -251,8 +303,8 @@ export default function ScannerPage() {
             <div className="flex items-start gap-2 border-b border-bad-500/25 bg-bad-500/10 px-4 py-2.5 text-[13px] text-bad-500 lg:text-xs">
               <IconAlert className="mt-0.5 shrink-0" />
               <span>
-                This link asked for the scan to be sent somewhere that is not approved, so it has been
-                ignored. {handoffResult.reason} You can still scan and download normally.
+                This scan link could not be used, so it has been ignored. {handoffResult.reason} You can still
+                scan and download normally.
               </span>
             </div>
           )}
@@ -291,20 +343,22 @@ export default function ScannerPage() {
               sessionId={sessionId}
               settings={settings}
               index={selectedIndex}
-              total={pages.length}
+              total={docPages.length}
               onChange={(patch) => updatePage(selected.id, patch)}
               onMove={(delta) => movePage(selected.id, delta)}
               onDelete={() => {
                 if (!confirm("Delete this page?")) return;
                 handleDelete(selected.id);
-                if (pages.length <= 1) setView("camera");
+                if (docPages.length <= 1) setView("camera");
               }}
               onBack={backToCamera}
+              documentLabel={multi ? activeDoc.label : undefined}
+              onDocuments={() => setDocsOpen(true)}
             />
           ) : (
             <CameraStage
               busy={busy}
-              pageCount={pages.length}
+              pageCount={docPages.length}
               lastPage={lastPage && sessionId ? { sessionId, id: lastPage.id } : null}
               onCapture={(blob) => ingest([blob], "camera")}
               onImport={(files) => ingest(files, "import")}
@@ -313,6 +367,19 @@ export default function ScannerPage() {
                 setView("edit");
               }}
               onDone={() => setPanelOpen(true)}
+              topSlot={
+                multi ? (
+                  <DocumentChip
+                    doc={activeDoc}
+                    index={activeIndex}
+                    total={documents.length}
+                    pageCount={docPages.length}
+                    onClick={() => setDocsOpen(true)}
+                  />
+                ) : null
+              }
+              nextLabel={multi && docPages.length > 0 && nextDoc ? nextDoc.label : null}
+              onNext={nextDoc ? () => chooseDocument(nextDoc.id) : undefined}
             />
           )}
         </section>
@@ -329,7 +396,7 @@ export default function ScannerPage() {
               onClick={() => setPanelOpen(true)}
               className="min-h-14 w-full rounded-2xl text-base font-bold"
             >
-              Export {pagesLabel}
+              Export {exportLabel}
               <IconChevronRight className="text-xl" />
             </Button>
           </div>
@@ -339,9 +406,25 @@ export default function ScannerPage() {
           className="hidden shrink-0 flex-col gap-4 overflow-y-auto lg:flex lg:w-80 lg:pr-1
             [scrollbar-color:var(--color-ink-600)_transparent]"
         >
+          {multi && (
+            <div>
+              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-mute">Documents</h2>
+              <DocumentList
+                documents={documents}
+                pages={pages}
+                activeId={activeDoc.id}
+                token={handoff?.token ?? null}
+                onSelect={chooseDocument}
+                onAdd={allowAdd ? newDocument : undefined}
+              />
+            </div>
+          )}
+
           <div>
             <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-mute">Pages</h2>
+              <h2 className="truncate text-xs font-medium uppercase tracking-wide text-mute">
+                {multi ? `Pages · ${activeDoc.label}` : "Pages"}
+              </h2>
               <div className="flex-1" />
               {!camera && (
                 <Button variant="outline" onClick={backToCamera} className="px-2 py-1 text-xs">
@@ -350,6 +433,11 @@ export default function ScannerPage() {
               )}
             </div>
             {pageStrip(false)}
+            {allowAdd && !multi && pages.length > 0 && (
+              <Button variant="ghost" onClick={newDocument} className="mt-2 w-full text-xs">
+                <IconPlus /> Scan a separate document
+              </Button>
+            )}
           </div>
 
           <div className="border-t border-ink-800 pt-4">
@@ -359,47 +447,59 @@ export default function ScannerPage() {
         </aside>
       </main>
 
+      {/* Phone: which document the next capture goes into. */}
+      {docsOpen && (
+        <Sheet title="Documents" onClose={() => setDocsOpen(false)}>
+          <DocumentList
+            documents={documents}
+            pages={pages}
+            activeId={activeDoc.id}
+            token={handoff?.token ?? null}
+            onSelect={chooseDocument}
+            onAdd={allowAdd ? newDocument : undefined}
+          />
+          {pages.length > 0 && (
+            <div className="sticky bottom-0 -mx-4 bg-gradient-to-t from-ink-900 from-75% to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setDocsOpen(false);
+                  setPanelOpen(true);
+                }}
+                className="min-h-14 w-full rounded-2xl text-base font-bold"
+              >
+                Export {exportLabel}
+                <IconChevronRight className="text-xl" />
+              </Button>
+            </div>
+          )}
+        </Sheet>
+      )}
+
       {/* Phone: export as a bottom sheet, within thumb reach. */}
       {panelOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Export">
-          <button
-            type="button"
-            aria-label="Close export"
-            onClick={() => setPanelOpen(false)}
-            className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm"
-          />
-          <div
-            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-ink-700
-              bg-ink-900 shadow-2xl shadow-black/60"
-          >
-            <div className="flex shrink-0 items-center gap-2 pb-1 pl-5 pr-2 pt-2">
-              <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-ink-600" />
-              <h2 className="mt-3 flex-1 text-base font-semibold">Export · {pagesLabel}</h2>
-              <button
-                type="button"
-                onClick={() => setPanelOpen(false)}
-                aria-label="Close export"
-                className="mt-3 grid h-11 w-11 place-items-center rounded-full text-xl text-mute hover:bg-ink-800"
-              >
-                <IconX />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3">
-              {exportPanel(true)}
-              {pages.length > 0 && (
-                <button
-                  type="button"
-                  onClick={startOver}
-                  className="mx-auto mb-[max(0.5rem,env(safe-area-inset-bottom))] block min-h-11 px-4 text-sm text-mute
-                    underline underline-offset-2 hover:text-text"
-                >
-                  Discard all pages and start over
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <Sheet title={`Export · ${exportLabel}`} onClose={() => setPanelOpen(false)}>
+          {exportPanel(true)}
+          {allowAdd && pages.length > 0 && (
+            <button
+              type="button"
+              onClick={newDocument}
+              className="mx-auto mt-1 flex min-h-11 items-center gap-1.5 px-4 text-sm font-medium text-scan-400"
+            >
+              <IconPlus /> Scan another document
+            </button>
+          )}
+          {pages.length > 0 && (
+            <button
+              type="button"
+              onClick={startOver}
+              className="mx-auto mb-[max(0.5rem,env(safe-area-inset-bottom))] block min-h-11 px-4 text-sm text-mute
+                underline underline-offset-2 hover:text-text"
+            >
+              Discard all pages and start over
+            </button>
+          )}
+        </Sheet>
       )}
 
       {progress && (

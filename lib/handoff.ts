@@ -14,9 +14,27 @@
  * closed: with none configured, hand-off is refused rather than trusted.
  */
 
+/** One document the portal wants a scan for. */
+export interface HandoffDocument {
+  /** The portal's own id, echoed back as `document_id` with the upload. */
+  id: number;
+  /** Shown to the translator and used to name the PDF. */
+  label: string;
+}
+
+/** A sanity bound, not a business rule: a link asking for more is almost surely malformed. */
+const MAX_DOCUMENTS = 20;
+const MAX_LABEL = 80;
+
 export interface Handoff {
   /** Absolute URL the finished PDF is POSTed to. */
   uploadTo: string;
+  /**
+   * The documents this order wants scanned, or null for the original
+   * one-document link. Only ever used for names and ordering: the portal alone
+   * decides which documents a token may fill.
+   */
+  documents: HandoffDocument[] | null;
   /** One-time credential minted by the portal; opaque to us. */
   token: string;
   /** Order this scan belongs to, echoed back so the portal can file it. */
@@ -37,6 +55,39 @@ function allowedOrigins(): string[] {
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
+}
+
+/** Returns the documents, or a message saying what is wrong with the list. */
+function parseDocuments(raw: string): HandoffDocument[] | string {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return "The list of documents in the link is not valid.";
+  }
+
+  if (!Array.isArray(value) || value.length === 0) return "The link lists no documents to scan.";
+  if (value.length > MAX_DOCUMENTS) return `The link lists more than ${MAX_DOCUMENTS} documents.`;
+
+  const seen = new Set<number>();
+  const documents: HandoffDocument[] = [];
+
+  for (const [i, entry] of value.entries()) {
+    const id = (entry as { id?: unknown })?.id;
+    if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+      return "A document in the link has no valid id.";
+    }
+    if (seen.has(id)) return "The link lists the same document twice.";
+    seen.add(id);
+
+    const text = (entry as { label?: unknown }).label;
+    // Control characters stripped, and length capped: the label ends up in the
+    // header and in a file name, so it is treated as untrusted text.
+    const label = (typeof text === "string" ? text : "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, MAX_LABEL);
+    documents.push({ id, label: label || `Document ${i + 1}` });
+  }
+
+  return documents;
 }
 
 export function readHandoff(search: string): HandoffResult {
@@ -80,10 +131,19 @@ export function readHandoff(search: string): HandoffResult {
     };
   }
 
+  const rawDocuments = params.get("documents");
+  let documents: HandoffDocument[] | null = null;
+  if (rawDocuments !== null) {
+    const parsed = parseDocuments(rawDocuments);
+    if (typeof parsed === "string") return { status: "rejected", reason: parsed };
+    documents = parsed;
+  }
+
   return {
     status: "ready",
     handoff: {
       uploadTo: target.toString(),
+      documents,
       token,
       translationId: params.get("translation_id"),
       returnTo: params.get("return_to"),
@@ -114,12 +174,15 @@ export interface UploadOutcome {
 export async function uploadToPortal(
   handoff: Handoff,
   pdf: Blob,
-  filename: string
+  filename: string,
+  /** Which portal document this PDF is for; omitted for a one-document link. */
+  documentId?: number
 ): Promise<UploadOutcome> {
   const form = new FormData();
   form.append("file", pdf, filename);
   form.append("token", handoff.token);
   if (handoff.translationId) form.append("translation_id", handoff.translationId);
+  if (documentId !== undefined) form.append("document_id", String(documentId));
 
   let response: Response;
   try {

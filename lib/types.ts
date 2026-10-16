@@ -8,6 +8,8 @@ export type PageSize = "auto" | "a4" | "letter" | "legal";
 
 export interface Page {
   id: string;
+  /** The document this page belongs to; one document becomes one PDF. */
+  documentId: string;
   width: number;
   height: number;
   quad: Quad;
@@ -17,6 +19,26 @@ export interface Page {
   bytes: number;
   /** Per-page override; falls back to the document-wide mode when null. */
   mode: Mode | null;
+}
+
+/**
+ * One document in the session, exported as one PDF.
+ *
+ * A plain scan has a single document. A portal order with several documents
+ * seeds one per portal document, each carrying that document's portal id so the
+ * PDF is filed against the right one.
+ */
+export interface Doc {
+  id: string;
+  label: string;
+  /** The portal's id for this document, or null for a purely local one. */
+  portalId: number | null;
+  /**
+   * The hand-off token this document was delivered under. Tied to the token
+   * rather than a boolean so that a fresh link, which carries a fresh token,
+   * never inherits "already sent" from an earlier order.
+   */
+  sentWith: string | null;
 }
 
 export interface Settings {

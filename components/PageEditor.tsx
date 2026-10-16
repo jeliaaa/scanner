@@ -8,6 +8,7 @@ import type { Page, Point, Quad, Settings } from "@/lib/types";
 import { QuadOverlay } from "./QuadOverlay";
 import {
   IconAlert,
+  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconCrop,
@@ -32,6 +33,9 @@ interface Props {
   /** Back to the camera. */
   onBack: () => void;
   onMove: (delta: number) => void;
+  /** Set when the session has several documents: names the one being edited. */
+  documentLabel?: string;
+  onDocuments?: () => void;
 }
 
 type Drag =
@@ -39,7 +43,19 @@ type Drag =
   | { kind: "edge"; index: number; start: Point; a: Point; b: Point }
   | null;
 
-export function PageEditor({ page, sessionId, settings, index, total, onChange, onDelete, onBack, onMove }: Props) {
+export function PageEditor({
+  page,
+  sessionId,
+  settings,
+  index,
+  total,
+  onChange,
+  onDelete,
+  onBack,
+  onMove,
+  documentLabel,
+  onDocuments,
+}: Props) {
   const [tab, setTab] = React.useState<"adjust" | "result">("adjust");
   const [draft, setDraft] = React.useState<Quad>(page.quad);
   const [drag, setDrag] = React.useState<Drag>(null);
@@ -212,9 +228,27 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
           Camera
         </button>
 
-        <span className="flex-1 text-center text-sm tabular-nums text-mute">
-          Page {index + 1} of {total}
-        </span>
+        {/* With several documents the title names the current one and opens
+            the document list, so the editor never leaves you wondering which
+            document a page is going into. */}
+        {documentLabel ? (
+          <button
+            type="button"
+            onClick={onDocuments}
+            className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 text-sm
+              text-mute transition-colors hover:text-text"
+          >
+            <span className="truncate font-semibold text-text">{documentLabel}</span>
+            <span className="shrink-0 tabular-nums">
+              · {index + 1}/{total}
+            </span>
+            <IconChevronDown className="shrink-0 text-lg" />
+          </button>
+        ) : (
+          <span className="flex-1 text-center text-sm tabular-nums text-mute">
+            Page {index + 1} of {total}
+          </span>
+        )}
 
         <button
           type="button"

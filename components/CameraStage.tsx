@@ -6,7 +6,17 @@ import { contentRect, quadToPixels, smoothQuad } from "@/lib/geometry";
 import { useElementSize } from "@/lib/hooks";
 import type { Quad } from "@/lib/types";
 import { QuadOverlay } from "./QuadOverlay";
-import { Button, IconAlert, IconAuto, IconBolt, IconCheck, IconImage, IconRefresh, RoundButton } from "./ui";
+import {
+  Button,
+  IconAlert,
+  IconAuto,
+  IconBolt,
+  IconCheck,
+  IconChevronRight,
+  IconImage,
+  IconRefresh,
+  RoundButton,
+} from "./ui";
 
 type Status = "starting" | "live" | "denied" | "unavailable";
 
@@ -36,6 +46,15 @@ interface Props {
   lastPage: { sessionId: string; id: string } | null;
   onReview: () => void;
   onDone: () => void;
+  /** Shown under the switches: which document the next capture goes into. */
+  topSlot?: React.ReactNode;
+  /**
+   * Name of the document after this one, when there is one. The finish button
+   * then moves on to it instead of going to export, so a run of several
+   * documents is one capture-capture-next rhythm.
+   */
+  nextLabel?: string | null;
+  onNext?: () => void;
 }
 
 function maxMove(a: Quad, b: Quad): number {
@@ -50,7 +69,18 @@ function readAutoPreference(): boolean {
   }
 }
 
-export function CameraStage({ onCapture, onImport, busy, pageCount, lastPage, onReview, onDone }: Props) {
+export function CameraStage({
+  onCapture,
+  onImport,
+  busy,
+  pageCount,
+  lastPage,
+  onReview,
+  onDone,
+  topSlot,
+  nextLabel = null,
+  onNext,
+}: Props) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const scratchRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -422,6 +452,8 @@ export function CameraStage({ onCapture, onImport, busy, pageCount, lastPage, on
           )}
         </div>
 
+        {topSlot}
+
         {live && (
           <span
             className="rounded-full bg-ink-950/75 px-4 py-2 text-sm font-medium backdrop-blur-sm"
@@ -511,13 +543,13 @@ export function CameraStage({ onCapture, onImport, busy, pageCount, lastPage, on
           {pageCount > 0 ? (
             <button
               type="button"
-              onClick={onDone}
-              aria-label="Done scanning, continue to export"
+              onClick={nextLabel && onNext ? onNext : onDone}
+              aria-label={nextLabel ? `Next document: ${nextLabel}` : "Done scanning, continue to export"}
               className="grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-scan-500 text-3xl
                 text-ink-950 transition-transform hover:bg-scan-400 active:scale-95 focus-visible:outline
                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-scan-500"
             >
-              <IconCheck />
+              {nextLabel ? <IconChevronRight /> : <IconCheck />}
             </button>
           ) : (
             <span className="h-[60px] w-[60px] shrink-0" aria-hidden="true" />
@@ -526,7 +558,9 @@ export function CameraStage({ onCapture, onImport, busy, pageCount, lastPage, on
 
         <p className="mt-3.5 text-center text-[13px] text-mute [@media(max-height:500px)]:hidden">
           {pageCount > 0
-            ? "Keep capturing — pages stack up. Tap the thumbnail to review."
+            ? nextLabel
+              ? `Tap › when this document is done. Next: ${nextLabel}`
+              : "Keep capturing — pages stack up. Tap the thumbnail to review."
             : "Point at a page and tap the shutter"}
         </p>
       </div>
@@ -535,5 +569,11 @@ export function CameraStage({ onCapture, onImport, busy, pageCount, lastPage, on
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6">{children}</div>;
+  // Click-through except for its own contents: it fills the whole viewfinder,
+  // and without this it would sit on top of the controls along the top edge.
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 [&>*]:pointer-events-auto">
+      {children}
+    </div>
+  );
 }
