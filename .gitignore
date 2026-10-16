@@ -53,3 +53,6 @@ server/logs/*
 !server/logs/.gitkeep
 # The template is documentation, not a secret; .env* above would hide it.
 !.env.example
+
+
+/graphify-out
