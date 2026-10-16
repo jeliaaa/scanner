@@ -10,11 +10,12 @@ export const viewport: Viewport = {
   themeColor: "#08090c",
   width: "device-width",
   initialScale: 1,
-  // The corner editor uses drag gestures; pinch-zooming the page fights them.
-  maximumScale: 1,
-  userScalable: false,
-  // Lets the sheet pad itself past the home indicator via env(safe-area-inset-*).
+  // Pinch zoom stays on for accessibility. The corner editor opts out of it
+  // locally with touch-action: none, which is the precise tool for that job.
+  // Lets the layout pad itself past the notch and home indicator via
+  // env(safe-area-inset-*).
   viewportFit: "cover",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

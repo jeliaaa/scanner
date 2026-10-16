@@ -19,10 +19,36 @@ export function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
-        transition-colors disabled:cursor-not-allowed disabled:opacity-60
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+        transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-9
         focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
         focus-visible:outline-scan-500 ${VARIANTS[variant]} ${className}`}
+    />
+  );
+}
+
+/**
+ * Circular 44px control for floating over the viewfinder. 44px is the smallest
+ * target a thumb can hit reliably, and the translucent fill keeps the glyph
+ * legible over any scene the camera happens to be pointed at.
+ */
+export function RoundButton({
+  active = false,
+  className = "",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return (
+    <button
+      {...props}
+      aria-pressed={props["aria-pressed"] ?? (active || undefined)}
+      className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-xl backdrop-blur-sm
+        transition-[transform,background-color] active:scale-95 disabled:opacity-40
+        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+        focus-visible:outline-scan-500 ${
+          active
+            ? "bg-scan-500/20 text-scan-400 ring-1 ring-scan-500"
+            : "bg-ink-950/65 text-text hover:bg-ink-800/80"
+        } ${className}`}
     />
   );
 }
@@ -58,7 +84,7 @@ export function Segmented<T extends string>({
           type="button"
           title={o.title}
           onClick={() => onChange(o.value)}
-          className={`flex-1 rounded-[6px] px-2 py-1.5 text-xs font-medium transition-colors ${
+          className={`min-h-11 flex-1 rounded-[6px] px-2 py-1.5 text-xs font-medium transition-colors sm:min-h-0 ${
             value === o.value ? "bg-ink-600 text-text shadow-sm" : "text-mute hover:text-text"
           }`}
         >
@@ -166,6 +192,25 @@ export const IconAlert = icon(
     <path d="M12 8v5" />
     <path d="M12 16.5h.01" />
     <path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20.2h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+  </>
+);
+
+export const IconBolt = icon(<path d="M13 3 6 13.5h5L10 21l8-11h-5.5z" />);
+
+export const IconImage = icon(
+  <>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5" />
+  </>
+);
+
+export const IconChevronDown = icon(<path d="m6 10 6 6 6-6" />);
+
+export const IconAuto = icon(
+  <>
+    <circle cx="12" cy="12" r="8" />
+    <path d="m8.5 12.3 2.4 2.4 4.6-5" />
   </>
 );
 

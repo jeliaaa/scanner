@@ -6,10 +6,20 @@ import { FULL_FRAME, clamp01, contentRect, isConvex, quadToPixels } from "@/lib/
 import { useDebounced, useElementSize } from "@/lib/hooks";
 import type { Page, Point, Quad, Settings } from "@/lib/types";
 import { QuadOverlay } from "./QuadOverlay";
-import { Button, IconAlert, IconCheck, IconCrop, IconRefresh, IconRotate, IconTrash, IconWand } from "./ui";
+import {
+  IconAlert,
+  IconChevronLeft,
+  IconChevronRight,
+  IconCrop,
+  IconRefresh,
+  IconRotate,
+  IconTrash,
+} from "./ui";
 
-const LOUPE_PX = 132;
+const LOUPE_PX = 124;
 const LOUPE_ZOOM = 3;
+/** Gap between the touch point and the loupe, so a fingertip never covers it. */
+const LOUPE_GAP = 44;
 
 interface Props {
   page: Page;
@@ -19,7 +29,9 @@ interface Props {
   total: number;
   onChange: (patch: Partial<Page>) => void;
   onDelete: () => void;
-  onDone: () => void;
+  /** Back to the camera. */
+  onBack: () => void;
+  onMove: (delta: number) => void;
 }
 
 type Drag =
@@ -27,7 +39,7 @@ type Drag =
   | { kind: "edge"; index: number; start: Point; a: Point; b: Point }
   | null;
 
-export function PageEditor({ page, sessionId, settings, index, total, onChange, onDelete, onDone }: Props) {
+export function PageEditor({ page, sessionId, settings, index, total, onChange, onDelete, onBack, onMove }: Props) {
   const [tab, setTab] = React.useState<"adjust" | "result">("adjust");
   const [draft, setDraft] = React.useState<Quad>(page.quad);
   const [drag, setDrag] = React.useState<Drag>(null);
@@ -185,56 +197,58 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
   const weak = page.confidence < 0.25;
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg bg-ink-850 p-0.5">
-          {(["adjust", "result"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className={`rounded-[6px] px-3 py-1.5 text-xs font-medium transition-colors ${
-                tab === value ? "bg-ink-600 text-text" : "text-mute hover:text-text"
-              }`}
-            >
-              {value === "adjust" ? "Adjust edges" : "Result"}
-            </button>
-          ))}
-        </div>
+    <div className="flex h-full flex-col gap-2.5">
+      {/* Top: the way back, where you are, and the one destructive action
+          parked at the far corner, away from everything you tap often. */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-11 items-center gap-0.5 rounded-full bg-ink-800 py-0 pl-2 pr-4 text-[15px] font-semibold
+            text-text transition-colors hover:bg-ink-700 active:scale-95 focus-visible:outline
+            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-scan-500"
+        >
+          <IconChevronLeft className="text-2xl" />
+          Camera
+        </button>
 
-        <span className="hidden text-xs text-mute sm:inline">
+        <span className="flex-1 text-center text-sm tabular-nums text-mute">
           Page {index + 1} of {total}
         </span>
 
-        <div className="flex-1" />
-
-        <Button variant="outline" onClick={() => onChange({ rotate: (page.rotate + 270) % 360 })} title="Rotate left">
-          <IconRotate />
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => onChange({ rotate: (page.rotate + 90) % 360 })}
-          title="Rotate right"
-          className="[&>svg]:-scale-x-100"
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Delete this page"
+          title="Delete this page"
+          className="grid h-11 w-11 place-items-center rounded-full bg-ink-800 text-xl text-bad-500 transition-colors
+            hover:bg-bad-500/15 active:scale-95 focus-visible:outline focus-visible:outline-2
+            focus-visible:outline-offset-2 focus-visible:outline-scan-500"
         >
-          <IconRotate />
-        </Button>
-        <Button variant="outline" onClick={() => void redetect()} disabled={working} title="Detect the edges again">
-          <IconRefresh />
-          <span className="hidden sm:inline">Re-detect</span>
-        </Button>
-        <Button variant="outline" onClick={selectAll} title="Use the whole photo">
-          <IconCrop />
-          <span className="hidden sm:inline">Whole photo</span>
-        </Button>
-        <Button variant="danger" onClick={onDelete} title="Discard this page">
           <IconTrash />
-        </Button>
+        </button>
+      </div>
+
+      <div className="flex rounded-[14px] bg-ink-850 p-1" role="tablist" aria-label="View">
+        {(["adjust", "result"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => setTab(value)}
+            className={`min-h-11 flex-1 rounded-[10px] px-3 text-[15px] font-semibold transition-colors ${
+              tab === value ? "bg-ink-600 text-text" : "text-mute hover:text-text"
+            }`}
+          >
+            {value === "adjust" ? "Adjust edges" : "See result"}
+          </button>
+        ))}
       </div>
 
       <div
         ref={boxRef}
-        className="relative flex-1 touch-none overflow-hidden rounded-xl bg-ink-900 ring-1 ring-ink-700"
+        className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-xl bg-ink-900 ring-1 ring-ink-700"
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
@@ -278,10 +292,16 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
                         });
                       }}
                       style={{ left: mid[0], top: mid[1] }}
-                      className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none
-                        rounded-full border-2 border-scan-500/70 bg-ink-950/60 backdrop-blur-sm
-                        transition-transform hover:scale-110 active:cursor-grabbing"
-                    />
+                      className="group absolute z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 cursor-grab
+                        touch-none place-items-center active:cursor-grabbing"
+                    >
+                      {/* 48px to grab, a small dot to look at: the target is
+                          finger-sized while the picture stays uncluttered. */}
+                      <span
+                        className="h-4 w-4 rounded-full border-2 border-scan-500/80 bg-ink-950/70 backdrop-blur-sm
+                          transition-transform group-hover:scale-125 group-active:scale-125"
+                      />
+                    </button>
                   );
                 })}
 
@@ -296,21 +316,31 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
                       setPointer(draft[i]);
                     }}
                     style={{ left: corner[0], top: corner[1] }}
-                    className="absolute z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none
-                      rounded-full border-2 border-scan-500 bg-scan-500/25 backdrop-blur-sm
-                      transition-transform hover:scale-110 active:cursor-grabbing"
-                  />
+                    className="group absolute z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 cursor-grab
+                      touch-none place-items-center active:cursor-grabbing"
+                  >
+                    <span
+                      className="h-7 w-7 rounded-full border-[3px] border-scan-500 bg-scan-500/30 backdrop-blur-sm
+                        transition-transform group-hover:scale-110 group-active:scale-125"
+                    />
+                  </button>
                 ))}
               </>
             )}
 
             {drag && pointer && <Loupe src={src} point={pointer} rect={rect} />}
 
-            {weak && !drag && (
+            {!drag && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
-                <span className="flex items-center gap-2 rounded-full bg-ink-950/80 px-3 py-1.5 text-xs text-warn-500 backdrop-blur-sm">
-                  <IconAlert /> Edges were unclear — drag the corners onto the page
-                </span>
+                {weak ? (
+                  <span className="flex items-center gap-2 rounded-full bg-ink-950/80 px-3.5 py-2 text-[13px] text-warn-500 backdrop-blur-sm">
+                    <IconAlert /> Edges were unclear — drag the corners onto the page
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-ink-950/80 px-3.5 py-2 text-[13px] text-mute backdrop-blur-sm">
+                    Drag a corner or edge to fit the page
+                  </span>
+                )}
               </div>
             )}
           </>
@@ -336,26 +366,63 @@ export function PageEditor({ page, sessionId, settings, index, total, onChange, 
                 <p className="text-sm text-mute">The preview could not be rendered.</p>
               </div>
             )}
+            {preview && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
+                <span className="rounded-full bg-ink-950/80 px-3.5 py-2 text-[13px] text-mute backdrop-blur-sm">
+                  Exactly how this page will look in the PDF
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <p className="hidden text-xs text-mute sm:block">
-          {tab === "adjust"
-            ? "Drag the corners, or an edge, to match the page."
-            : "This is exactly how the page will look in the PDF."}
-        </p>
-        <div className="flex-1" />
-        <Button variant="ghost" onClick={() => setTab(tab === "adjust" ? "result" : "adjust")}>
-          <IconWand />
-          <span className="hidden sm:inline">{tab === "adjust" ? "See result" : "Back to edges"}</span>
-        </Button>
-        <Button variant="primary" onClick={onDone}>
-          <IconCheck /> Done
-        </Button>
+      {/* Tools: labelled, 56px tall, and in the thumb zone. An icon alone makes
+          you guess; with a word under it nobody has to. */}
+      <div className="grid grid-cols-5 gap-1">
+        <Tool label="Rotate" onClick={() => onChange({ rotate: (page.rotate + 90) % 360 })}>
+          <IconRotate className="-scale-x-100" />
+        </Tool>
+        <Tool label="Re-detect" onClick={() => void redetect()} disabled={working}>
+          <IconRefresh className={working ? "animate-spin" : ""} />
+        </Tool>
+        <Tool label="No crop" onClick={selectAll}>
+          <IconCrop />
+        </Tool>
+        <Tool label="Move left" onClick={() => onMove(-1)} disabled={index === 0}>
+          <IconChevronLeft />
+        </Tool>
+        <Tool label="Move right" onClick={() => onMove(1)} disabled={index === total - 1}>
+          <IconChevronRight />
+        </Tool>
       </div>
     </div>
+  );
+}
+
+function Tool({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[12px] font-medium text-text
+        transition-colors hover:bg-ink-800 active:scale-95 active:bg-ink-700 disabled:opacity-35
+        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-scan-500"
+    >
+      <span className="text-2xl">{children}</span>
+      {label}
+    </button>
   );
 }
 
@@ -371,8 +438,8 @@ function Loupe({ src, point, rect }: { src: string; point: Point; rect: { x: num
   const y = rect.y + point[1] * rect.h;
 
   // Flip to the opposite side near the edges so the loupe stays on screen.
-  const left = x + (point[0] > 0.75 ? -LOUPE_PX - 24 : 24);
-  const top = y + (point[1] < 0.25 ? 24 : -LOUPE_PX - 24);
+  const left = x + (point[0] > 0.75 ? -LOUPE_PX - LOUPE_GAP : LOUPE_GAP);
+  const top = y + (point[1] < 0.25 ? LOUPE_GAP : -LOUPE_PX - LOUPE_GAP);
 
   return (
     <div

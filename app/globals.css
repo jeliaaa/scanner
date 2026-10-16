@@ -33,23 +33,47 @@ body {
   overscroll-behavior: none;
 }
 
-/* Range inputs are the one control Tailwind cannot reach far enough into. */
+/*
+ * Taps respond at once instead of waiting out the double-tap-to-zoom delay,
+ * while pinch zoom stays available for anyone who needs it.
+ */
+html {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Range inputs are the one control Tailwind cannot reach far enough into. The
+ * element itself is tall and transparent so the grab area is finger-sized; the
+ * visible track is a thin rule drawn on the runnable track.
+ */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
+  height: 36px;
+  background: transparent;
+  outline: none;
+  touch-action: pan-y;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
   border-radius: 999px;
   background: var(--color-ink-600);
-  outline: none;
+}
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-ink-600);
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
   border-radius: 999px;
   background: var(--color-scan-500);
-  border: 2px solid var(--color-ink-900);
+  border: 3px solid var(--color-ink-900);
   cursor: grab;
   box-shadow: 0 0 0 1px var(--color-scan-600);
 }
@@ -57,12 +81,16 @@ input[type="range"]::-webkit-slider-thumb:active {
   cursor: grabbing;
 }
 input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   background: var(--color-scan-500);
-  border: 2px solid var(--color-ink-900);
+  border: 3px solid var(--color-ink-900);
   cursor: grab;
+}
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-scan-400);
+  outline-offset: 2px;
 }
 
 @keyframes shutter-flash {

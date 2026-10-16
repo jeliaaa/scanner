@@ -3,7 +3,7 @@
 import * as React from "react";
 import { thumbUrl } from "@/lib/api";
 import type { Page } from "@/lib/types";
-import { IconChevronLeft, IconChevronRight, IconLayers, IconTrash } from "./ui";
+import { IconChevronLeft, IconChevronRight, IconLayers, IconPlus, IconTrash } from "./ui";
 
 interface Props {
   pages: Page[];
@@ -12,9 +12,11 @@ interface Props {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, delta: number) => void;
+  /** Phone only: a trailing "+" tile that returns to the camera. */
+  onAdd?: () => void;
 }
 
-export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, onMove }: Props) {
+export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, onMove, onAdd }: Props) {
   if (!pages.length) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed
@@ -27,17 +29,20 @@ export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, on
   }
 
   return (
-    <ol className="flex gap-2 overflow-x-auto pb-1 lg:grid lg:grid-cols-2 lg:gap-2 lg:overflow-visible">
+    <ol
+      className="hide-scrollbar flex snap-x gap-2.5 overflow-x-auto px-0.5 py-1 lg:grid lg:grid-cols-2 lg:gap-2
+        lg:overflow-visible lg:p-0"
+    >
       {pages.map((page, index) => {
         const active = page.id === selectedId;
         return (
-          <li key={page.id} className="group relative shrink-0 lg:shrink">
+          <li key={page.id} className="group relative shrink-0 snap-start lg:shrink">
             <button
               type="button"
               aria-label={`Open page ${index + 1}`}
               aria-current={active}
               onClick={() => onSelect(page.id)}
-              className={`block w-16 overflow-hidden rounded-lg ring-2 transition-all sm:w-20 lg:w-full ${
+              className={`block w-14 overflow-hidden rounded-lg ring-2 transition-all sm:w-20 lg:w-full ${
                 active ? "ring-scan-500" : "ring-ink-700 hover:ring-ink-500"
               }`}
             >
@@ -66,15 +71,15 @@ export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, on
               />
             )}
 
-            {/* Reordering and deletion stay hidden until the page is hovered or
-                focused, so the strip reads as thumbnails rather than toolbars.
-                On touch screens there is no hover, so they are always shown -
-                otherwise they would be unreachable on the device this app is
-                mostly used from. */}
+            {/* Reordering and deletion appear on hover or focus, on the roomy
+                desktop rail only. On a phone these 24px buttons sat edge to
+                edge with Delete beside the arrows, so a slightly-off tap threw
+                a page away. The phone gets the same actions, full size, in the
+                editor's toolbar and top bar instead. */}
             <div
-              className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-gradient-to-t
+              className="absolute inset-x-0 bottom-0 hidden items-center justify-center gap-0.5 bg-gradient-to-t
                 from-ink-950 to-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100
-                group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                group-focus-within:opacity-100 lg:flex"
             >
               <IconButton
                 label="Move earlier"
@@ -97,6 +102,22 @@ export function PageStrip({ pages, sessionId, selectedId, onSelect, onDelete, on
           </li>
         );
       })}
+
+      {onAdd && (
+        <li className="shrink-0 snap-start lg:hidden">
+          <button
+            type="button"
+            onClick={onAdd}
+            aria-label="Add another page"
+            className="grid aspect-[3/4] w-14 place-items-center rounded-lg border-2 border-dashed border-ink-500
+              text-xl text-mute transition-colors active:scale-95 active:border-scan-500 active:text-scan-400
+              sm:w-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+              focus-visible:outline-scan-500"
+          >
+            <IconPlus />
+          </button>
+        </li>
+      )}
     </ol>
   );
 }
